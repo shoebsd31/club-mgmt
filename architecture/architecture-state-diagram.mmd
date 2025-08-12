@@ -1,0 +1,201 @@
+stateDiagram-v2
+  %% Club Management & Tournament System — Architecture State Diagram
+  %% Compatible with VS Code Mermaid Preview
+
+  [*] --> ClientApp_Ready
+
+  state ClientApp_Ready {
+    [*] --> Unauthenticated
+    Unauthenticated --> Authenticated: Successful login
+    Unauthenticated --> AuthInProgress: Google|Apple|Phone OTP
+    AuthInProgress --> Authenticated: Tokens issued
+    AuthInProgress --> Unauthenticated: Error / cancel
+    Authenticated --> Browsing: Navigate app
+    Browsing --> DataFetch: Route resolver / service call
+    DataFetch --> Browsing: Rendered list/detail
+    Authenticated --> SessionBooking
+    Authenticated --> TournamentRegistration
+    Authenticated --> WalletTopup
+    Authenticated --> AdminBackoffice
+    Authenticated --> Logout: User action / token expiry
+    Logout --> Unauthenticated
+  }
+
+  %% ================= Subsystems as parallel regions =================
+  state "Subsystems (Concurrent)" as Subsystems {
+    [*] --> Frontend
+    [*] --> ApiLayer
+    [*] --> Database
+    [*] --> Payments
+    [*] --> Observability
+    [*] --> CICD
+  }
+
+  %% ---------------- Frontend ----------------
+  state Frontend {
+    [*] --> AppShell
+    AppShell --> AuthModule
+    AppShell --> ClubsModule
+    AppShell --> SessionsModule
+    AppShell --> WalletModule
+    AppShell --> TournamentsModule
+    AppShell --> AdminModule
+
+    state AuthModule {
+      [*] --> Idle
+      Idle --> GoogleFlow: Click Google
+      GoogleFlow --> TokenExchange: Receive idToken
+      Idle --> AppleFlow: Click Apple
+      AppleFlow --> TokenExchange
+      Idle --> OTPRequest: Enter phone
+      OTPRequest --> OTPVerify: Receive code
+      TokenExchange --> SessionEstablished: POST /auth/login/google|apple
+      OTPVerify --> SessionEstablished: POST /auth/login/otp/verify
+      SessionEstablished --> Idle: Store tokens, navigate
+    }
+
+    state SessionsModule {
+      [*] --> SessionsList
+      SessionsList --> SessionDetail: Select session
+      SessionsList --> CreateSession: Organizer action
+      SessionDetail --> RSVPYes: POST /sessions/{id}/rsvp
+      SessionDetail --> RSVPNo: POST /sessions/{id}/rsvp
+      SessionDetail --> CheckIn: POST /sessions/{id}/rsvp status=checked_in
+      CreateSession --> SessionsList
+    }
+
+    state TournamentsModule {
+      [*] --> TournamentsList
+      TournamentsList --> TournamentDetail: Select tournament
+      TournamentDetail --> DivisionList
+      DivisionList --> RegistrationForm: Choose team/player
+      RegistrationForm --> StripeRedirect: POST /registrations/{id}/checkout
+      StripeRedirect --> ReturnToApp: success/cancel on Stripe
+      ReturnToApp --> RegistrationConfirmed
+    }
+
+    state WalletModule {
+      [*] --> WalletView: GET /wallet
+      WalletView --> WalletTxns: GET /wallet/transactions
+      WalletView --> TopupFlow: POST /wallet/topup/checkout (planned)
+    }
+
+    state AdminModule {
+      [*] --> ClubsAdmin
+      ClubsAdmin --> FinanceAdmin
+      FinanceAdmin --> CreateTxn: POST /clubs/{id}/transactions
+      ClubsAdmin --> VenuesAdmin: Manage venues/courts
+    }
+  }
+
+  %% ---------------- API Layer ----------------
+  state ApiLayer {
+    [*] --> Routing
+    Routing --> AuthController: /auth/*
+    Routing --> UsersController: /users/*
+    Routing --> ClubsController: /clubs/*
+    Routing --> VenuesController: /clubs/{id}/venues, /venues/{id}/courts
+    Routing --> SessionsController: /sessions/*
+    Routing --> WalletController: /wallet/*
+    Routing --> FinanceController: /clubs/{id}/transactions
+    Routing --> TournamentsController: /tournaments/*
+    Routing --> DivisionsController: /tournaments/{id}/divisions, /divisions/*
+    Routing --> RegistrationsController: /registrations/*
+    Routing --> BracketsController: /divisions/{id}/brackets
+    Routing --> MatchesController: /matches/*
+    Routing --> WebhooksController: /webhooks/stripe
+
+    AuthController --> IdentityServices: Verify tokens, mint JWT
+    UsersController --> ReadModels: Compose user profile
+    SessionsController --> DomainServices
+    TournamentsController --> DomainServices
+    RegistrationsController --> PaymentOrchestrator
+    WebhooksController --> PaymentOrchestrator
+
+    DomainServices --> Repositories
+    Repositories --> DtoMappers
+  }
+
+  %% ---------------- Database ----------------
+  state Database {
+    [*] --> IdentitySchema
+    [*] --> ClubSchema
+    [*] --> TournamentSchema
+    [*] --> FinanceSchema
+
+    state IdentitySchema {
+      [*] --> Users
+      Users --> UserIdentities
+      Users --> UserSessions
+      Users --> OTPCodes
+      Users --> LoginEvents
+      Users --> Members
+    }
+
+    state ClubSchema {
+      [*] --> Clubs
+      Clubs --> Venues
+      Venues --> Courts
+      Members --> Memberships
+      Memberships --> Wallets
+      Wallets --> WalletTransactions
+      Clubs --> Sessions
+      Sessions --> RSVPs
+      Clubs --> ClubTransactions
+    }
+
+    state TournamentSchema {
+      [*] --> Tournaments
+      Tournaments --> Divisions
+      Divisions --> Teams
+      Teams --> TeamMembers
+      Divisions --> Registrations
+      Registrations --> StripePayments
+      Divisions --> Brackets
+      Brackets --> Matches
+      Matches --> MatchSets
+    }
+
+    state FinanceSchema {
+      [*] --> ClubTransactions
+      [*] --> WalletTransactions
+      [*] --> StripePayments
+    }
+  }
+
+  %% ---------------- Payments ----------------
+  state Payments {
+    [*] --> CheckoutSession
+    CheckoutSession --> StripeHosted: Redirect to Stripe
+    StripeHosted --> WebhookEvents: payment_intent.succeeded, checkout.session.completed, charge.refunded
+    WebhookEvents --> ApiLayer: /webhooks/stripe
+    ApiLayer --> UpdateRegistration: Mark paid/refunded
+    UpdateRegistration --> Database
+  }
+
+  %% ---------------- Observability ----------------
+  state Observability {
+    [*] --> StructuredLogs
+    [*] --> Metrics: request_count, latency, error_rate
+    [*] --> Tracing: correlation_ids
+    [*] --> Alerts
+  }
+
+  %% ---------------- CI/CD ----------------
+  state CICD {
+    [*] --> BuildAndTest
+    BuildAndTest --> LintCheck
+    LintCheck --> UnitTests
+    UnitTests --> E2EPlaywright
+    E2EPlaywright --> PackageArtifacts
+    PackageArtifacts --> DeployStaging
+    DeployStaging --> SmokeTests
+    SmokeTests --> DeployProduction
+  }
+
+  %% ================= Cross-subsystem transitions =================
+  Authenticated --> ApiLayer: HTTP requests with JWT
+  ApiLayer --> Database: Queries/Transactions
+  TournamentRegistration --> Payments: Create Checkout Session
+  Payments --> ApiLayer: Webhook callbacks
+  Observability --> Alerts: On SLA breach

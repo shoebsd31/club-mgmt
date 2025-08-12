@@ -1,0 +1,1233 @@
+openapi: 3.0.3
+info:
+  title: Club & Tournament Management API
+  version: "1.0.0"
+  description: |
+    REST API for multi-club management with identity, sessions/RSVP, wallets, tournaments,
+    and Stripe payments. All endpoints (unless noted) require Bearer JWT.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production
+  - url: https://staging.api.example.com/v1
+    description: Staging
+  - url: http://localhost:8080/v1
+    description: Local dev
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Clubs
+  - name: Venues
+  - name: Courts
+  - name: Memberships
+  - name: Sessions
+  - name: RSVPs
+  - name: Wallet
+  - name: ClubTransactions
+  - name: Tournaments
+  - name: Divisions
+  - name: Teams
+  - name: Registrations
+  - name: Brackets
+  - name: Matches
+  - name: Webhooks
+
+paths:
+  /auth/login/google:
+    post:
+      tags: [Auth]
+      summary: Login with Google
+      description: Exchange a Google ID token for access/refresh tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Google ID token (JWT) from client SDK
+      responses:
+        '200':
+          description: Auth success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/login/apple:
+    post:
+      tags: [Auth]
+      summary: Login with Apple
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+      responses:
+        '200':
+          description: Auth success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/login/otp/request:
+    post:
+      tags: [Auth]
+      summary: Request phone OTP
+      description: Sends an OTP to the phone (SMS/WhatsApp) if allowed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  example: "+43123456789"
+      responses:
+        '200':
+          description: OTP requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: sent
+        '429':
+          description: Rate-limited
+
+  /auth/login/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify phone OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Auth success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /clubs:
+    get:
+      tags: [Clubs]
+      summary: List clubs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Clubs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedClubs'
+    post:
+      tags: [Clubs]
+      summary: Create club
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+
+  /clubs/{clubId}:
+    get:
+      tags: [Clubs]
+      summary: Get club
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      responses:
+        '200':
+          description: Club
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Clubs]
+      summary: Update club
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+    delete:
+      tags: [Clubs]
+      summary: Delete club
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      responses:
+        '204':
+          description: Deleted
+
+  /clubs/{clubId}/venues:
+    get:
+      tags: [Venues]
+      summary: List venues in club
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      responses:
+        '200':
+          description: Venues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Venue'
+    post:
+      tags: [Venues]
+      summary: Create venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenueCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Venue'
+
+  /venues/{venueId}/courts:
+    get:
+      tags: [Courts]
+      summary: List courts
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '200':
+          description: Courts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Court'
+    post:
+      tags: [Courts]
+      summary: Create court
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourtCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Court'
+
+  /memberships/me:
+    get:
+      tags: [Memberships]
+      summary: My memberships
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Membership'
+
+  /clubs/{clubId}/memberships:
+    post:
+      tags: [Memberships]
+      summary: Join club
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  example: regular
+      responses:
+        '201':
+          description: Membership created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+
+  /memberships/{membershipId}:
+    delete:
+      tags: [Memberships]
+      summary: Leave club
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MembershipId'
+      responses:
+        '204':
+          description: Left
+
+  /sessions:
+    get:
+      tags: [Sessions]
+      summary: List sessions
+      parameters:
+        - in: query
+          name: clubId
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Session'
+    post:
+      tags: [Sessions]
+      summary: Create session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+
+  /sessions/{sessionId}:
+    get:
+      tags: [Sessions]
+      summary: Get session
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    patch:
+      tags: [Sessions]
+      summary: Update session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    delete:
+      tags: [Sessions]
+      summary: Delete session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: Deleted
+
+  /sessions/{sessionId}/rsvps:
+    get:
+      tags: [RSVPs]
+      summary: List RSVPs
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: RSVPs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RSVP'
+
+  /sessions/{sessionId}/rsvp:
+    post:
+      tags: [RSVPs]
+      summary: Create/update my RSVP
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RSVPSet'
+      responses:
+        '200':
+          description: RSVP saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RSVP'
+
+  /wallet:
+    get:
+      tags: [Wallet]
+      summary: Get my wallet
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: List wallet transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedWalletTxns'
+
+  /clubs/{clubId}/transactions:
+    get:
+      tags: [ClubTransactions]
+      summary: List club transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      responses:
+        '200':
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClubTransaction'
+    post:
+      tags: [ClubTransactions]
+      summary: Create club transaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClubId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubTransactionCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClubTransaction'
+
+  /tournaments:
+    get:
+      tags: [Tournaments]
+      summary: List tournaments
+      parameters:
+        - in: query
+          name: clubId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [draft, open, closed, completed, cancelled] }
+      responses:
+        '200':
+          description: Tournaments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tournament' }
+    post:
+      tags: [Tournaments]
+      summary: Create tournament
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TournamentCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tournament' }
+
+  /tournaments/{tournamentId}:
+    get:
+      tags: [Tournaments]
+      summary: Get tournament
+      parameters:
+        - $ref: '#/components/parameters/TournamentId'
+      responses:
+        '200':
+          description: Tournament
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tournament' }
+    patch:
+      tags: [Tournaments]
+      summary: Update tournament
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TournamentId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TournamentUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tournament' }
+
+  /tournaments/{tournamentId}/divisions:
+    get:
+      tags: [Divisions]
+      summary: List divisions
+      parameters:
+        - $ref: '#/components/parameters/TournamentId'
+      responses:
+        '200':
+          description: Divisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Division' }
+    post:
+      tags: [Divisions]
+      summary: Create division
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TournamentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DivisionCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Division' }
+
+  /divisions/{divisionId}/registrations:
+    post:
+      tags: [Registrations]
+      summary: Register a team/player
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DivisionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegistrationCreate' }
+      responses:
+        '201':
+          description: Registration created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Registration' }
+
+  /registrations/{registrationId}/checkout:
+    post:
+      tags: [Registrations]
+      summary: Create Stripe Checkout Session
+      description: Returns a URL to redirect the user to Stripe Checkout.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RegistrationId'
+      responses:
+        '200':
+          description: Checkout session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkoutSessionId:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+
+  /registrations/{registrationId}:
+    get:
+      tags: [Registrations]
+      summary: Get registration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RegistrationId'
+      responses:
+        '200':
+          description: Registration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Registration' }
+
+  /divisions/{divisionId}/brackets:
+    get:
+      tags: [Brackets]
+      summary: Get bracket(s)
+      parameters:
+        - $ref: '#/components/parameters/DivisionId'
+      responses:
+        '200':
+          description: Brackets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Bracket' }
+    post:
+      tags: [Brackets]
+      summary: Generate brackets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DivisionId'
+      responses:
+        '201':
+          description: Generated
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Bracket' }
+
+  /matches/{matchId}:
+    get:
+      tags: [Matches]
+      summary: Get match
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Match
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Match' }
+    patch:
+      tags: [Matches]
+      summary: Update match result
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatchUpdate' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Match' }
+
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      summary: Stripe webhook endpoint
+      description: Accepts Stripe events to update payments/registrations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Acknowledge
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      in: query
+      name: pageSize
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    ClubId:
+      in: path
+      name: clubId
+      required: true
+      schema: { type: string, format: uuid }
+    VenueId:
+      in: path
+      name: venueId
+      required: true
+      schema: { type: string, format: uuid }
+    MembershipId:
+      in: path
+      name: membershipId
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string, format: uuid }
+    TournamentId:
+      in: path
+      name: tournamentId
+      required: true
+      schema: { type: string, format: uuid }
+    DivisionId:
+      in: path
+      name: divisionId
+      required: true
+      schema: { type: string, format: uuid }
+    RegistrationId:
+      in: path
+      name: registrationId
+      required: true
+      schema: { type: string, format: uuid }
+    MatchId:
+      in: path
+      name: matchId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+
+    AuthResponse:
+      type: object
+      properties:
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+
+    Club:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        address: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    ClubCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        address: { type: string }
+        phone: { type: string }
+    ClubUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        address: { type: string }
+        phone: { type: string }
+
+    Venue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clubId: { type: string, format: uuid }
+        name: { type: string }
+        address: { type: string, nullable: true }
+        defaultHourlyCharge: { type: number, format: double, nullable: true }
+        totalCourts: { type: integer, nullable: true }
+        maxPlayersPerCourt: { type: integer, nullable: true }
+        active: { type: boolean }
+    VenueCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        address: { type: string }
+        defaultHourlyCharge: { type: number, format: double }
+        totalCourts: { type: integer }
+        maxPlayersPerCourt: { type: integer }
+        active: { type: boolean }
+
+    Court:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        venueId: { type: string, format: uuid }
+        code: { type: string }
+        active: { type: boolean }
+    CourtCreate:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        active: { type: boolean }
+
+    Membership:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clubId: { type: string, format: uuid }
+        memberId: { type: string, format: uuid }
+        type: { type: string, enum: [regular, junior, organizer, admin] }
+        status: { type: string, enum: [active, paused, exited] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, nullable: true }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clubId: { type: string, format: uuid }
+        venueId: { type: string, format: uuid }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [scheduled, in_progress, completed, cancelled] }
+        notes: { type: string, nullable: true }
+        maxGuestsPerMember: { type: integer }
+    SessionCreate:
+      type: object
+      required: [clubId, venueId, startAt]
+      properties:
+        clubId: { type: string, format: uuid }
+        venueId: { type: string, format: uuid }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        notes: { type: string }
+        maxGuestsPerMember: { type: integer }
+    SessionUpdate:
+      type: object
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status: { type: string }
+        notes: { type: string }
+        maxGuestsPerMember: { type: integer }
+
+    RSVP:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        membershipId: { type: string, format: uuid }
+        status: { type: string, enum: [invited, yes, no, maybe, checked_in] }
+        guestCount: { type: integer }
+        rsvpAt: { type: string, format: date-time }
+    RSVPSet:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [yes, no, maybe] }
+        guestCount: { type: integer, minimum: 0 }
+
+    Wallet:
+      type: object
+      properties:
+        balance: { type: number, format: double }
+        updatedAt: { type: string, format: date-time }
+    WalletTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [topup, charge, refund, adjustment, tournament_fee] }
+        amount: { type: number, format: double }
+        reference: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ClubTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clubId: { type: string, format: uuid }
+        txnDate: { type: string, format: date }
+        category: { type: string }
+        direction: { type: string, enum: [expense, income] }
+        amount: { type: number, format: double }
+        payer: { type: string, nullable: true }
+        payee: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    ClubTransactionCreate:
+      type: object
+      required: [txnDate, category, direction, amount]
+      properties:
+        txnDate: { type: string, format: date }
+        category: { type: string }
+        direction: { type: string }
+        amount: { type: number, format: double }
+        payer: { type: string }
+        payee: { type: string }
+        reason: { type: string }
+        notes: { type: string }
+
+    Tournament:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clubId: { type: string, format: uuid }
+        name: { type: string }
+        format: { type: string, enum: [round_robin, single_elim, double_elim, americano] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [draft, open, closed, completed, cancelled] }
+        venueId: { type: string, format: uuid, nullable: true }
+        baseFee: { type: number, format: double, nullable: true }
+        currency: { type: string, default: EUR }
+        rulesUrl: { type: string, nullable: true }
+    TournamentCreate:
+      type: object
+      required: [clubId, name, format, startDate]
+      properties:
+        clubId: { type: string, format: uuid }
+        name: { type: string }
+        format: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        venueId: { type: string, format: uuid }
+        baseFee: { type: number, format: double }
+        currency: { type: string }
+        rulesUrl: { type: string }
+    TournamentUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        format: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        status: { type: string }
+        venueId: { type: string, format: uuid }
+        baseFee: { type: number, format: double }
+        currency: { type: string }
+        rulesUrl: { type: string }
+
+    Division:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid }
+        name: { type: string }
+        gender: { type: string, enum: [any, men, women, mixed] }
+        type: { type: string, enum: [singles, doubles] }
+        skillMin: { type: string, nullable: true }
+        skillMax: { type: string, nullable: true }
+        maxTeams: { type: integer, nullable: true }
+        feeOverride: { type: number, format: double, nullable: true }
+    DivisionCreate:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        gender: { type: string }
+        type: { type: string }
+        skillMin: { type: string }
+        skillMax: { type: string }
+        maxTeams: { type: integer }
+        feeOverride: { type: number, format: double }
+
+    Team:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        type: { type: string, enum: [singles, doubles] }
+        captainMembershipId: { type: string, format: uuid, nullable: true }
+
+    Registration:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        divisionId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        registeredAt: { type: string, format: date-time }
+        status: { type: string, enum: [pending_payment, paid, waitlist, cancelled, refunded] }
+        amount: { type: number, format: double, nullable: true }
+        currency: { type: string, default: EUR }
+    RegistrationCreate:
+      type: object
+      required: [teamId]
+      properties:
+        teamId: { type: string, format: uuid }
+        amount: { type: number, format: double }
+        currency: { type: string }
+
+    Bracket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        divisionId: { type: string, format: uuid }
+        bracketType: { type: string, enum: [rr, se, de, americano] }
+        structure: { type: object }
+
+    Match:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bracketId: { type: string, format: uuid }
+        roundNo: { type: integer, nullable: true }
+        team1Id: { type: string, format: uuid, nullable: true }
+        team2Id: { type: string, format: uuid, nullable: true }
+        winnerTeamId: { type: string, format: uuid, nullable: true }
+        startTime: { type: string, format: date-time, nullable: true }
+        courtCode: { type: string, nullable: true }
+        status: { type: string, enum: [scheduled, in_progress, completed, walkover] }
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchSet'
+    MatchSet:
+      type: object
+      properties:
+        setNo: { type: integer }
+        team1Score: { type: integer }
+        team2Score: { type: integer }
+    MatchUpdate:
+      type: object
+      properties:
+        winnerTeamId: { type: string, format: uuid }
+        status: { type: string }
+        sets:
+          type: array
+          items: { $ref: '#/components/schemas/MatchSet' }
+
+    PagedClubs:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Club' }
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    PagedWalletTxns:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/WalletTransaction' }
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }

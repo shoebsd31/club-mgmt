@@ -1,0 +1,291 @@
+erDiagram
+  %% ==================== Relationships ====================
+  Users ||--o{ UserIdentities : has
+  Users ||--o{ UserSessions : has
+  Users ||--o{ OTPCodes : has
+  Users ||--o{ LoginEvents : has
+  Users ||--o{ Members : owns
+
+  Clubs ||--o{ Venues : has
+  Venues ||--o{ Courts : has
+
+  Members ||--o{ Memberships : enrolls
+  Clubs ||--o{ Memberships : contains
+
+  Memberships ||--|| Wallets : has
+  Wallets ||--o{ WalletTransactions : contains
+
+  Clubs ||--o{ Sessions : hosts
+  Venues ||--o{ Sessions : scheduled_at
+  Sessions ||--o{ RSVPs : includes
+  Memberships ||--o{ RSVPs : places
+
+  Clubs ||--o{ ClubTransactions : records
+
+  Clubs ||--o{ Tournaments : organizes
+  Tournaments ||--o{ Divisions : has
+  Teams ||--o{ TeamMembers : includes
+  Memberships ||--o{ TeamMembers : participates
+  Divisions ||--o{ Registrations : receives
+  Teams ||--o{ Registrations : makes
+  Registrations ||--o{ StripePayments : has
+
+  Divisions ||--o{ Brackets : defines
+  Brackets ||--o{ Matches : contains
+  Matches ||--o{ MatchSets : contains
+
+  %% ==================== Entities ====================
+  Users {
+    uuid id PK
+    text username
+    text email
+    text phone_e164
+    bool email_verified
+    bool phone_verified
+    text password_hash
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz last_login_at
+    jsonb preferences
+  }
+
+  UserIdentities {
+    uuid id PK
+    uuid user_id FK
+    text provider
+    text provider_subject
+    text email_at_provider
+    jsonb raw_profile
+    timestamptz linked_at
+    timestamptz last_login_at
+  }
+
+  UserSessions {
+    uuid id PK
+    uuid user_id FK
+    timestamptz created_at
+    timestamptz expires_at
+    text refresh_token_hash
+    text user_agent
+    text ip_address
+    timestamptz revoked_at
+  }
+
+  OTPCodes {
+    uuid id PK
+    uuid user_id FK
+    text phone_e164
+    text purpose
+    text code_hash
+    timestamptz created_at
+    timestamptz expires_at
+    timestamptz consumed_at
+    int attempt_count
+  }
+
+  LoginEvents {
+    uuid id PK
+    uuid user_id FK
+    timestamptz occurred_at
+    text method
+    bool success
+    text ip_address
+    text user_agent
+    text notes
+  }
+
+  Members {
+    uuid id PK
+    uuid user_id FK
+    text first_name
+    text last_name
+    text email
+    text phone
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  Clubs {
+    uuid id PK
+    text name
+    text address
+    text phone
+    text ivr_number
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  Venues {
+    uuid id PK
+    uuid club_id FK
+    text name
+    text address
+    numeric default_hourly_charge
+    int total_courts
+    int max_players_per_court
+    bool active
+  }
+
+  Courts {
+    uuid id PK
+    uuid venue_id FK
+    text code
+    bool active
+  }
+
+  Memberships {
+    uuid id PK
+    uuid member_id FK
+    uuid club_id FK
+    text type
+    date start_date
+    date end_date
+    text status
+    text stripe_customer_id
+  }
+
+  Sessions {
+    uuid id PK
+    uuid club_id FK
+    uuid venue_id FK
+    timestamptz start_at
+    timestamptz end_at
+    uuid organizer_membership_id FK
+    text notes
+    int max_guests_per_member
+    text status
+  }
+
+  RSVPs {
+    uuid id PK
+    uuid session_id FK
+    uuid membership_id FK
+    text status
+    int guest_count
+    timestamptz rsvp_at
+  }
+
+  Wallets {
+    uuid id PK
+    uuid membership_id FK
+    numeric balance_cached
+    timestamptz updated_at
+  }
+
+  WalletTransactions {
+    uuid id PK
+    uuid wallet_id FK
+    timestamptz created_at
+    text type
+    numeric amount
+    text reference
+    uuid session_id FK
+    uuid tournament_id FK
+    text remarks
+  }
+
+  ClubTransactions {
+    uuid id PK
+    uuid club_id FK
+    date txn_date
+    text category
+    text direction
+    numeric amount
+    text payer
+    text payee
+    text reason
+    text notes
+    uuid created_by_membership_id FK
+  }
+
+  Tournaments {
+    uuid id PK
+    uuid club_id FK
+    text name
+    text format
+    date start_date
+    date end_date
+    uuid venue_id FK
+    numeric base_fee
+    text currency
+    text status
+    text rules_url
+  }
+
+  Divisions {
+    uuid id PK
+    uuid tournament_id FK
+    text name
+    text gender
+    text type
+    text skill_min
+    text skill_max
+    int max_teams
+    numeric fee_override
+  }
+
+  Teams {
+    uuid id PK
+    text name
+    text type
+    uuid captain_membership_id FK
+  }
+
+  TeamMembers {
+    uuid id PK
+    uuid team_id FK
+    uuid membership_id FK
+    text role
+  }
+
+  Registrations {
+    uuid id PK
+    uuid division_id FK
+    uuid team_id FK
+    timestamptz registered_at
+    text status
+    numeric amount
+    text currency
+  }
+
+  StripePayments {
+    uuid id PK
+    uuid registration_id FK
+    text stripe_customer_id
+    text stripe_price_id
+    text stripe_checkout_session_id
+    text stripe_payment_intent_id
+    text status
+    numeric amount
+    text currency
+    text receipt_url
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  Brackets {
+    uuid id PK
+    uuid division_id FK
+    text bracket_type
+    jsonb structure
+  }
+
+  Matches {
+    uuid id PK
+    uuid bracket_id FK
+    int round_no
+    uuid team1_id FK
+    uuid team2_id FK
+    uuid winner_team_id FK
+    timestamptz start_time
+    text court_code
+    text status
+  }
+
+  MatchSets {
+    uuid id PK
+    uuid match_id FK
+    int set_no
+    int team1_score
+    int team2_score
+  }
