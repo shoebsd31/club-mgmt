@@ -1,0 +1,36 @@
+sequenceDiagram
+  title Tournament Registration with Stripe Checkout and Webhook
+  participant U as User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Reg as Registration Service
+  participant Pay as Payment Orchestrator
+  participant DB as PostgreSQL
+  participant Stripe as Stripe
+
+  U->>FE: Open Division and click "Register"
+  FE->>API: POST /divisions/{divisionId}/registrations { teamId }
+  API->>Reg: Create registration
+  Reg->>DB: INSERT registration (pending_payment)
+  DB-->>Reg: OK
+  Reg-->>API: Registration DTO
+  API-->>FE: 201 {registrationId}
+
+  U->>FE: Click "Pay Now"
+  FE->>API: POST /registrations/{registrationId}/checkout
+  API->>Pay: Create Checkout Session
+  Pay->>Stripe: Create Checkout Session
+  Stripe-->>Pay: { checkoutSessionId, url }
+  Pay->>DB: Save stripe ids
+  DB-->>Pay: OK
+  API-->>FE: 200 { url }
+  FE->>Stripe: Redirect user to Stripe Checkout
+
+  Stripe-->>FE: Return to success/cancel URL
+  Stripe-->>API: Webhook checkout.session.completed
+  API->>Pay: Handle webhook
+  Pay->>DB: Update payment + registration status=paid
+  DB-->>Pay: OK
+  Pay-->>API: 200
+  FE->>API: GET /registrations/{id}
+  API-->>FE: { status: paid }

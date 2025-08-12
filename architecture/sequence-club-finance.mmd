@@ -1,0 +1,23 @@
+sequenceDiagram
+  title Club Finance Transactions (Admin)
+  participant Admin as Admin User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Fin as Finance Service
+  participant DB as PostgreSQL
+
+  Admin->>FE: Open Club Finance
+  FE->>API: GET /clubs/{clubId}/transactions
+  API->>Fin: Query transactions
+  Fin->>DB: SELECT club_transactions
+  DB-->>Fin: Rows
+  Fin-->>API: Array DTO
+  API-->>FE: 200 [transactions]
+
+  Admin->>FE: Add new expense/income
+  FE->>API: POST /clubs/{clubId}/transactions { direction, amount, category }
+  API->>Fin: Validate & create
+  Fin->>DB: INSERT club_transaction
+  DB-->>Fin: OK
+  Fin-->>API: Created DTO
+  API-->>FE: 201 { transaction }

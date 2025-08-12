@@ -1,0 +1,24 @@
+sequenceDiagram
+  title Match Result Submission (Admin)
+  participant Admin as Admin User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Mat as Matches Service
+  participant DB as PostgreSQL
+
+  Admin->>FE: Open Match Detail
+  FE->>API: GET /matches/{matchId}
+  API->>Mat: Load match
+  Mat->>DB: SELECT match + sets
+  DB-->>Mat: Rows
+  Mat-->>API: Match DTO
+  API-->>FE: 200 { match }
+
+  Admin->>FE: Enter scores, click Save
+  FE->>API: PATCH /matches/{matchId} { sets, status }
+  API->>Mat: Validate + apply result
+  Mat->>DB: UPDATE match & sets; compute winner
+  DB-->>Mat: OK
+  Mat-->>API: Updated DTO
+  API-->>FE: 200 { match }
+  FE->>FE: Show success toast, refresh bracket

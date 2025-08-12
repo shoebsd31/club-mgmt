@@ -1,0 +1,23 @@
+sequenceDiagram
+  title Wallet Balance and Transactions
+  participant U as User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Wal as Wallet Service
+  participant DB as PostgreSQL
+
+  U->>FE: Open Wallet
+  FE->>API: GET /wallet
+  API->>Wal: Get balance
+  Wal->>DB: SELECT wallet summary
+  DB-->>Wal: Balance
+  Wal-->>API: Wallet DTO
+  API-->>FE: 200 { balance }
+
+  U->>FE: View transactions (page 1)
+  FE->>API: GET /wallet/transactions?page=1&pageSize=20
+  API->>Wal: List transactions
+  Wal->>DB: SELECT transactions ORDER BY created_at DESC LIMIT/OFFSET
+  DB-->>Wal: Rows
+  Wal-->>API: Paged DTO
+  API-->>FE: 200 { data, meta }

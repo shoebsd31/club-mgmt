@@ -1,0 +1,32 @@
+sequenceDiagram
+  title Session Listing, Details, and RSVP
+  participant U as User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Sess as Sessions Service
+  participant DB as PostgreSQL
+
+  U->>FE: Open Sessions page
+  FE->>API: GET /sessions?clubId=&from=&to=
+  API->>Sess: Query sessions
+  Sess->>DB: SELECT sessions by range
+  DB-->>Sess: Rows
+  Sess-->>API: Sessions DTO
+  API-->>FE: 200 [sessions]
+
+  U->>FE: View session details
+  FE->>API: GET /sessions/{id}
+  API->>Sess: Load session
+  Sess->>DB: SELECT session by id
+  DB-->>Sess: Row
+  Sess-->>API: Session DTO
+  API-->>FE: 200 {session}
+
+  U->>FE: RSVP "Yes"
+  FE->>API: POST /sessions/{id}/rsvp { status: yes }
+  API->>Sess: Upsert RSVP
+  Sess->>DB: INSERT/UPDATE rsvp
+  DB-->>Sess: OK
+  Sess-->>API: RSVP DTO
+  API-->>FE: 200 {rsvp}
+  FE->>FE: Update UI (optimistic, rollback on error)

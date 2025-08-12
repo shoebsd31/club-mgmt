@@ -1,0 +1,35 @@
+sequenceDiagram
+  title Auth Flows (Google / Apple / Phone OTP)
+  participant U as User
+  participant FE as Angular App
+  participant API as API Gateway
+  participant Auth as Auth Service
+  participant DB as PostgreSQL
+
+  rect rgb(230, 245, 255)
+    U->>FE: Click "Continue with Google/Apple"
+    FE->>API: POST /auth/login/google|apple { idToken }
+    API->>Auth: Validate IdP token
+    Auth->>DB: Upsert user + identity
+    DB-->>Auth: OK
+    Auth-->>API: Issue access/refresh tokens
+    API-->>FE: 200 { tokens, user }
+    FE->>FE: Store tokens, route to dashboard
+  end
+
+  rect rgb(245, 230, 255)
+    U->>FE: Enter phone, request OTP
+    FE->>API: POST /auth/login/otp/request { phone }
+    API->>Auth: Generate & hash OTP
+    Auth->>DB: Save OTP with expiry
+    DB-->>Auth: OK
+    API-->>FE: 200 sent
+    U->>FE: Submit OTP code
+    FE->>API: POST /auth/login/otp/verify { phone, code }
+    API->>Auth: Verify OTP and consume
+    Auth->>DB: Create session, update user
+    DB-->>Auth: OK
+    API-->>FE: 200 { tokens, user }
+  end
+
+  Note over FE,API: Token refresh: FE -> POST /auth/refresh on 401; API returns new tokens
