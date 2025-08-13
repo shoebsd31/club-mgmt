@@ -1,0 +1,83 @@
+
+graph TB
+  %% Deployment Diagram: Club Management System on Azure (Dockerized)
+  %% Simple syntax for strict Mermaid parser in VS Code
+
+  %% ==== Client ====
+  subgraph Client
+    U[User Browser]
+  end
+
+  %% ==== Edge ====
+  subgraph Edge
+    CDN[Azure Front Door and CDN]
+  end
+
+  %% ==== Azure Core ====
+  subgraph Azure
+    subgraph ACR
+      ACRRepo[Container Images frontend backend]
+    end
+
+    subgraph AppServicePlan
+      FE[Frontend Web App Nginx Angular]
+      API[Backend Web App ASPNET Core]
+    end
+
+    subgraph Data
+      DB[(Azure Database for PostgreSQL)]
+      KV[Azure Key Vault]
+      Storage[Azure Storage Logs]
+    end
+
+    subgraph Observability
+      AppInsights[Application Insights]
+      Monitor[Azure Monitor Alerts]
+    end
+  end
+
+  %% ==== CI CD ====
+  subgraph CICD
+    GHA[GitHub Actions or Azure Pipelines]
+  end
+
+  %% ==== External Providers ====
+  subgraph External
+    Stripe[Stripe Payments]
+    Google[Google Identity]
+    Apple[Apple Identity]
+  end
+
+  %% ==== Networking ====
+  VNet[Azure VNet]
+  PE[Private Endpoint PostgreSQL]
+
+  %% ==== Flows ====
+  U -->|HTTPS| CDN
+  CDN --> FE
+  U --> FE
+  FE -->|API calls with JWT| API
+  API --> DB
+  API --> KV
+  API --> AppInsights
+  AppInsights --> Monitor
+
+  %% Payments
+  FE --> API
+  API --> Stripe
+  Stripe --> API
+
+  %% Logging and Storage
+  API --> Storage
+  FE --> Storage
+
+  %% CI CD pipeline
+  GHA --> ACRRepo
+  GHA --> FE
+  GHA --> API
+
+  %% Networking links
+  VNet --- FE
+  VNet --- API
+  VNet --- DB
+  DB --- PE
